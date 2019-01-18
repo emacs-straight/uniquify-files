@@ -1,4 +1,4 @@
-;; uniquify-files.el --- Completion style for files in a path  -*- lexical-binding:t -*-
+;;; uniquify-files.el --- Completion style for files in a path  -*- lexical-binding:t -*-
 ;;
 ;; Copyright (C) 2017, 2019  Free Software Foundation, Inc.
 ;;
