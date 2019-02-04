@@ -84,7 +84,8 @@
   (should (equal (uniq-file-completion-table uft-iter "fi" nil 'metadata)
 		 (cons 'metadata
 		       (list
-			'(category . project-file)))))
+			'(category . project-file)
+			'(styles   . (uniquify-file))))))
 
   ;; all-completions. We sort the results here to make the test stable
   (should (equal (sort (uniq-file-completion-table uft-iter "-fi" nil t) #'string-lessp)

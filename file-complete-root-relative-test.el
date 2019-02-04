@@ -57,6 +57,7 @@
 		 (cons 'metadata
 		       (list
 			'(category . project-file)
+			'(styles   . (file-root-rel))
 			(cons 'root uft-root)))))
 
   ;; all-completions. We sort the results here to make the test stable
@@ -119,6 +120,7 @@
 		 (cons 'metadata
 		       (list
 			'(category . project-file)
+			'(styles   . (file-root-rel))
 			(cons 'root uft-root)))))
 
   ;; all-completions. We sort the results here to make the test stable

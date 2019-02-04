@@ -589,36 +589,44 @@ nil otherwise."
 
 (defun completion-get-data-string (user-string table pred)
   "Return the data string corresponding to USER-STRING."
-  ;;  FIXME: This is ultimately called from
-  ;;  `completion-try-completion' or `completion-all-completions';
-  ;;  there is only one style currently being used. Need to pass that
-  ;;  style from there to here.
-  (let ((results
-	 (mapcar (lambda (style)
-		   (let ((to-data-func (nth 5 (assq style completion-styles-alist))))
-		     (if to-data-func
-			 (funcall to-data-func user-string table pred)
-		       user-string)))
-		 (completion--styles (completion-metadata user-string table pred)))))
+  (let* ((styles
+	  (or (cdr (assq 'styles (completion-metadata user-string table pred)))
+	      (completion--styles (completion-metadata user-string table pred))))
+
+	 (results
+	  ;;  FIXME: This is ultimately called from
+	  ;;  `completion-try-completion' or `completion-all-completions';
+	  ;;  there is only one style currently being used. Need to pass that
+	  ;;  style from there to here.
+	  (mapcar (lambda (style)
+		    (let ((to-data-func (nth 5 (assq style completion-styles-alist))))
+		      (if to-data-func
+			  (funcall to-data-func user-string table pred)
+			user-string)))
+		  styles))
+	 )
     (car (delete-dups results))
     ))
 
-(defun completion-to-table-input (orig-fun string table &optional pred)
+(defun completion-to-table-input (orig-fun user-string table &optional pred)
   "Advice for `test-completion'; convert user string to table input."
   ;; See FIXME: in completion-get-data-string
-  (let ((table-strings
-	 (mapcar
-	  (lambda (style)
-	    (let ((to-table-func (if (functionp table)
-				     (nth 4 (assq style completion-styles-alist)) ;; user to table
+  (let* ((styles
+	  (or (cdr (assq 'styles (completion-metadata user-string table pred)))
+	      (completion--styles (completion-metadata user-string table pred))))
+	 (table-strings
+	  (mapcar
+	   (lambda (style)
+	     (let ((to-table-func (if (functionp table)
+				      (nth 4 (assq style completion-styles-alist)) ;; user to table
 
-				   ;; TABLE is a list of absolute file names
-				   (nth 5 (assq style completion-styles-alist)) ;; user to data
-				   )))
-	      (if to-table-func
-		  (funcall to-table-func string table pred)
-		string)))
-	  (completion--styles (completion-metadata string table pred)))))
+				    ;; TABLE is a list of absolute file names
+				    (nth 5 (assq style completion-styles-alist)) ;; user to data
+				    )))
+	       (if to-table-func
+		   (funcall to-table-func user-string table pred)
+		 user-string)))
+	   styles)))
     (setq table-strings (delete-dups table-strings))
     (funcall orig-fun (car table-strings) table pred)
     ))
@@ -636,10 +644,6 @@ nil otherwise."
     ))
 
 (advice-add #'completing-read-default :around #'uniq-file-completing-read-default-advice)
-
-;; FIXME: could not get setcdr to do this
-(delete '(project-file (styles . uniquify-file)) completion-category-defaults)
-(add-to-list 'completion-category-defaults '(project-file (styles . (uniquify-file))))
 
 (add-to-list 'completion-styles-alist
 	     '(uniquify-file
@@ -706,12 +710,9 @@ Return a list of absolute file names matching STRING."
    ((eq action 'metadata)
     (cons 'metadata
 	  (list
-	   ;; We specify the category 'project-file here, to match the
-	   ;; `completion-category-defaults' setting above.  We use
-	   ;; the default sort order, which is shortest first, so
-	   ;; "project.el" is easier to complete when it also matches
-	   ;; "project-am.el".
-	   '(category . project-file))))
+	   '(category . project-file)
+	   '(styles . (uniquify-file))
+	   )))
 
    ((null action)
     ;; Called from `try-completion'; should never get here (see

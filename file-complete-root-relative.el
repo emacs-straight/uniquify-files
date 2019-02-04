@@ -50,7 +50,7 @@
   "Return root from TABLE."
   (cdr (assoc 'root (completion-metadata "" table nil))))
 
-(defun fc-root-rel-to-table-input (user-string)
+(defun fc-root-rel-to-table-input (user-string &optional _table _pred _point)
   "Implement `completion-to-table-input' for file-root-rel."
   user-string)
 
@@ -289,12 +289,8 @@ STRING, PRED, ACTION are completion table arguments."
    ((eq action 'metadata)
     (cons 'metadata
 	  (list
-	   ;; We specify the category 'project-file here, to match the
-	   ;; `completion-category-defaults' setting above.  We use
-	   ;; the default sort order, which is shortest first, so
-	   ;; "project.el" is easier to complete when it also matches
-	   ;; "project-am.el".
 	   '(category . project-file)
+	   '(styles . (file-root-rel))
 	   (cons 'root (car (path-iter-path-recursive-init path-iter))))))
 
    ((null action)
@@ -370,12 +366,8 @@ STRING, PRED, ACTION are completion table arguments."
    ((eq action 'metadata)
     (cons 'metadata
 	  (list
-	   ;; We specify the category 'project-file here, to match the
-	   ;; `completion-category-defaults' setting above.  We use
-	   ;; the default sort order, which is shortest first, so
-	   ;; "project.el" is easier to complete when it also matches
-	   ;; "project-am.el".
 	   '(category . project-file)
+	   '(styles . (file-root-rel))
 	   (cons 'root root))))
 
    ((null action)
@@ -409,6 +401,14 @@ STRING, PRED, ACTION are completion table arguments."
 	result)
        )))
    ))
+
+(add-to-list 'completion-styles-alist
+	     '(file-root-rel
+	       fc-root-rel-try-completion
+	       fc-root-rel-all-completions
+	       "root relative hierarchical filenames."
+	       fc-root-rel-to-table-input    ;; 4 user to table input format
+	       fc-root-rel-to-data)) ;; 5 user to data format
 
 (provide 'file-complete-root-relative)
 ;;; file-complete-root-relative.el ends here
