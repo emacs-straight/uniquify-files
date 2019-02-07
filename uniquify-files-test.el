@@ -356,6 +356,10 @@
 		  "foo-file4.text<Alice/alice-3/>"
 		  "foo-file4.text<Bob/alice-3/>")))
 
+  (should (equal (sort (uniq-file-all-completions "foo-file4.text<Bob" table nil nil) #'string-lessp)
+		 (list
+		  "foo-file4.text<Bob/alice-3/>")))
+
   (should (equal (uniq-file-all-completions "f-file5" table nil nil)
 		 (list "foo-file5.text")))
 

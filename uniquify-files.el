@@ -191,17 +191,20 @@ Match 1 is the filename, match 2 is the relative directory.")
 	   (regex (completion-pcm--pattern->regex pattern)))
 
       ;; `regex' is anchored at the beginning; delete the anchor to
-      ;; match a directory in the middle of ABS.  Also extend
-      ;; the match to the bounding '/'.
+      ;; match a directory in the middle of ABS.
       (setq regex (substring regex 2))
+
+      ;; Include the preceding and following '/' .
       (unless (= ?/ (aref regex 0))
 	(setq regex (concat "/" regex)))
       (unless (= ?/ (aref regex (1- (length regex))))
 	(setq regex (concat regex "[^/]*/" )))
 
       (when (string-match regex abs);; Should never fail, but gives obscure error if it does
-	;; Drop the leading '/'
-	(substring (match-string 0 abs) 1))
+
+	;; Drop the leading '/', include all trailing directories;
+	;; consider Bob/alice-3/foo, Alice/alice-3/foo.
+	(substring abs (1+ (match-beginning 0))))
       ))
 
    (t
@@ -792,16 +795,23 @@ file name is included in the result if PRED returns
 non-nil. DEFAULT is the default for completion.
 
 In the user input string, `*' is treated as a wildcard."
-  (completing-read (format (concat (or prompt "file") " (%s): ") default)
-		   (apply-partially #'uniq-file-completion-table iter)
-		   predicate t nil nil default)
-  )
+  (let* ((table (apply-partially #'uniq-file-completion-table iter))
+	 (table-styles (cdr (assq 'styles (completion-metadata "" table nil))))
+	 (completion-category-overrides
+	  (list (list 'project-file (cons 'styles table-styles)))))
+
+    (completing-read (format (concat (or prompt "file") " (%s): ") default)
+		     table
+		     predicate t nil nil default)
+    ))
 
 (defun locate-uniquified-file-iter-2 (iter &optional predicate default prompt)
   "Same as `locate-uniquified-file-iter', but the internal
 completion table is the list returned by `path-iter-all-files'."
-  (let ((table (path-iter-all-files iter))
-	(completion-styles '(uniquify-file)))
+  (let* ((table (path-iter-all-files iter))
+	 (table-styles (cdr (assq 'styles (completion-metadata "" table nil))))
+	 (completion-category-overrides
+	  (list (list 'project-file (cons 'styles table-styles)))))
     (completing-read (format (concat (or prompt "file") " (%s): ") default)
 		     table
 		     predicate t nil nil default)

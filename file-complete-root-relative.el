@@ -368,7 +368,7 @@ STRING, PRED, ACTION are completion table arguments."
 	  (list
 	   '(category . project-file)
 	   '(styles . (file-root-rel))
-	   (cons 'root root))))
+	   (cons 'root (directory-file-name root)))))
 
    ((null action)
     ;; Called from `try-completion'; should never get here (see
@@ -379,7 +379,7 @@ STRING, PRED, ACTION are completion table arguments."
 	  '(lambda ;; Called from `test-completion'
 	     t))   ;; Called from all-completions
 
-    (let ((regex (fc-root-rel--pcm-pattern-list string root))
+    (let ((regex (fc-root-rel--pcm-pattern-list string (directory-file-name root)))
 	  (result nil)
 	  (case-fold-search completion-ignore-case))
 
@@ -394,7 +394,7 @@ STRING, PRED, ACTION are completion table arguments."
       (cond
        ((eq action 'lambda)
 	;; Called from `test-completion'
-	(fc-root-rel--valid-completion string result root))
+	(fc-root-rel--valid-completion string result (directory-file-name root)))
 
        ((eq action t)
 	;; Called from all-completions
