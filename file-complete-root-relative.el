@@ -191,6 +191,7 @@ character after each completion field."
     (when all
       (setq all (fc-root-rel-to-user all (fc-root-rel--root table)))
       (fc-root-rel--hilit user-string all point))
+      (uniq-file--set-style all 'file-root-rel))
     ))
 
 (defun fc-root-rel--valid-completion (string all root)

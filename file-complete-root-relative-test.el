@@ -174,33 +174,38 @@
   )
 
 (defun test-fc-root-rel-test-completion-1 (table)
-  (should (equal (test-completion "foo-fi" table)
-		 nil))
+  ;; In normal operation, 'all-completions' is called before
+  ;; test-completion, and it sets the 'completion-style text property.
+  (cl-flet ((ss (str)
+		(put-text-property 0 1 'completion-style 'file-root-rel str)
+		str))
+    (should (equal (test-completion (ss "foo-fi") table)
+		   nil))
 
-  (should (equal (test-completion "dir/f-fi" table)
-		 nil))
+    (should (equal (test-completion (ss "dir/f-fi") table)
+		   nil))
 
-  (should (equal (test-completion "foo-file1.text" table)
-		 t)) ;; starts at root
+    (should (equal (test-completion (ss "foo-file1.text") table)
+		   t)) ;; starts at root
 
-  (should (equal (test-completion "alice-1/foo-file1.text" table)
-		 nil)) ;; does not start at root
+    (should (equal (test-completion (ss "alice-1/foo-file1.text") table)
+		   nil)) ;; does not start at root
 
-  (should (equal (test-completion "Alice/alice-1/foo-file1.text" table)
-		 t)) ;; starts at root
+    (should (equal (test-completion (ss "Alice/alice-1/foo-file1.text") table)
+		   t)) ;; starts at root
 
-  (should (equal (test-completion "foo-file3.text" table)
-		 nil))
+    (should (equal (test-completion (ss "foo-file3.text") table)
+		   nil))
 
-  (should (equal (test-completion "foo-file3.texts2" table)
-		 t))
+    (should (equal (test-completion (ss "foo-file3.texts2") table)
+		   t))
 
-  (should (equal (test-completion "Alice/alice-/bar-file2.text" table)
-		 nil))
+    (should (equal (test-completion (ss "Alice/alice-/bar-file2.text") table)
+		   nil))
 
-  (should (equal (test-completion "Alice/alice-1/bar-file2.text" table)
-		 t))
-  )
+    (should (equal (test-completion (ss "Alice/alice-1/bar-file2.text") table)
+		   t))
+    ))
 
 (ert-deftest test-fc-root-rel-test-completion-iter ()
   (let ((table (apply-partially 'fc-root-rel-completion-table-iter fc-root-rel-iter))

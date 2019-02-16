@@ -159,30 +159,35 @@
   )
 
 (defun test-uniq-file-test-completion-1 (table)
-  (should (equal (test-completion "foo-fi" table)
-		 nil))
+  ;; In normal operation, 'all-completions' is called before
+  ;; test-completion, and it sets the 'completion-style text property.
+  (cl-flet ((ss (str)
+		(put-text-property 0 1 'completion-style 'uniquify-file str)
+		str))
+    (should (equal (test-completion (ss "foo-fi") table)
+		   nil))
 
-  (should (equal (test-completion "f-fi<dir" table)
-		 nil))
+    (should (equal (test-completion (ss "f-fi<dir") table)
+		   nil))
 
-  (should (equal (test-completion "foo-file1.text<>" table)
-		 t))
+    (should (equal (test-completion (ss "foo-file1.text<>") table)
+		   t))
 
-  (should (equal (test-completion "foo-file1.text" table)
-		 t))
+    (should (equal (test-completion (ss "foo-file1.text") table)
+		   t))
 
-  (should (equal (test-completion "foo-file1.text<alice-1/>" table)
-		 t))
+    (should (equal (test-completion (ss "foo-file1.text<alice-1/>") table)
+		   t))
 
-  (should (equal (test-completion "foo-file3.tex" table) ;; partial file name
-		 nil))
+    (should (equal (test-completion (ss "foo-file3.tex") table) ;; partial file name
+		   nil))
 
-  (should (equal (test-completion "foo-file3.texts2" table)
-		 t))
+    (should (equal (test-completion (ss "foo-file3.texts2") table)
+		   t))
 
-  (should (equal (test-completion "bar-file2.text<Alice/alice-" table)
-		 nil))
-  )
+    (should (equal (test-completion (ss "bar-file2.text<Alice/alice-") table)
+		   nil))
+    ))
 
 (ert-deftest test-uniq-file-test-completion-func ()
   (let ((table (apply-partially 'uniq-file-completion-table uft-iter)))
@@ -411,7 +416,9 @@
 
 (defun test-uniq-file-hilit (pos-list string)
   "Set 'face text property to 'completions-first-difference at
-all positions in POS-LIST in STRING; return new string."
+all positions in POS-LIST in STRING; return new string.
+Also set 'completion-style."
+  (put-text-property 0 1 'completion-style 'uniquify-file string)
   (while pos-list
     (let ((pos (pop pos-list)))
       (put-text-property pos (1+ pos) 'face 'completions-first-difference string)))
@@ -509,7 +516,7 @@ all positions in POS-LIST in STRING; return new string."
     (should (equal-including-properties
 	     (sort (uniq-file-all-completions "foo-file3.text" table nil nil) #'string-lessp)
 	     (list
-	      "foo-file3.text"
+	      (test-uniq-file-hilit '()   "foo-file3.text")
 	      (test-uniq-file-hilit '(14) "foo-file3.texts")
 	      (test-uniq-file-hilit '(14) "foo-file3.texts2")
 	      )))

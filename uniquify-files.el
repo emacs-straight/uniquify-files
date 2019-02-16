@@ -176,7 +176,7 @@
 (require 'cl-lib)
 (require 'path-iterator)
 
-(defconst uniq-files--regexp "^\\(.*\\)<\\([^>]*\\)>?$"
+(defconst uniq-file--regexp "^\\(.*\\)<\\([^>]*\\)>?$"
   ;; The trailing '>' is optional so the user can type "<dir" in the
   ;; input buffer to complete directories.
   "Regexp matching uniqufied file name.
@@ -212,8 +212,8 @@ Match 1 is the filename, match 2 is the relative directory.")
     "")
    ))
 
-(defun uniq-files--conflicts (conflicts dir)
-  "Subroutine of `uniq-files-uniquify'."
+(defun uniq-file--conflicts (conflicts dir)
+  "Subroutine of `uniq-file-uniquify'."
   (let ((common-root ;; shared prefix of dirs in conflicts - may be nil
 	 (fill-common-string-prefix (file-name-directory (nth 0 conflicts)) (file-name-directory (nth 1 conflicts)))))
 
@@ -307,7 +307,7 @@ If DIR is non-nil, all elements of NAMES must match DIR."
 		   (concat (file-name-nondirectory (car conflicts))))
 		 result))
 
-	    (setq result (append (uniq-files--conflicts conflicts dir) result)))
+	    (setq result (append (uniq-file--conflicts conflicts dir) result)))
 	  )
 	(nreverse result)
 	))
@@ -315,7 +315,7 @@ If DIR is non-nil, all elements of NAMES must match DIR."
 
 (defun uniq-file-to-table-input (user-string &optional _table _pred)
   "Implement `completion-to-table-input' for uniquify-file."
-  (let* ((match (string-match uniq-files--regexp user-string))
+  (let* ((match (string-match uniq-file--regexp user-string))
 	 (dir (and match (match-string 2 user-string))))
 
     (if match
@@ -479,7 +479,7 @@ Pattern is in reverse order."
 	(cons merged new-point)))
     ))
 
-(defun uniq-files--hilit (string all point)
+(defun uniq-file--hilit (string all point)
   "Apply face text properties to each element of ALL.
 STRING is the current user input.
 ALL is a list of strings in user format.
@@ -519,6 +519,14 @@ nil otherwise."
 	(setq result nil)))
     result))
 
+(defun uniq-file--set-style (all style)
+  "Set completion-style text property on each string in ALL to STYLE."
+  (mapcar
+   (lambda (str)
+     (put-text-property 0 1 'completion-style style str)
+     str)
+   all))
+
 (defun uniq-file-all-completions (user-string table pred point)
   "Implement `completion-all-completions' for uniquify-file."
   ;; Returns list of data format strings (abs file names).
@@ -550,7 +558,8 @@ nil otherwise."
 
     (when all
       (setq all (uniq-file--uniquify all (file-name-directory table-string)))
-      (uniq-files--hilit user-string all point))
+      (uniq-file--hilit user-string all point)
+      (uniq-file--set-style all 'uniquify-file))
     ))
 
 (defun uniq-file-get-data-string (user-string table pred)
@@ -592,46 +601,31 @@ nil otherwise."
 
 (defun completion-get-data-string (user-string table pred)
   "Return the data string corresponding to USER-STRING."
-  (let* ((styles
-	  (or (cdr (assq 'styles (completion-metadata user-string table pred)))
-	      (completion--styles (completion-metadata user-string table pred))))
-
-	 (results
-	  ;;  FIXME: This is ultimately called from
-	  ;;  `completion-try-completion' or `completion-all-completions';
-	  ;;  there is only one style currently being used. Need to pass that
-	  ;;  style from there to here.
-	  (mapcar (lambda (style)
-		    (let ((to-data-func (nth 5 (assq style completion-styles-alist))))
-		      (if to-data-func
-			  (funcall to-data-func user-string table pred)
-			user-string)))
-		  styles))
-	 )
-    (car (delete-dups results))
-    ))
+  ;; If the style requires a conversion here, the completion-style
+  ;; text property was set on USER-STRING by the style implementation
+  ;; of all-completions.
+  (let* ((style (get-text-property 0 'completion-style user-string))
+	 (to-data-func (when style (nth 5 (assq style completion-styles-alist)))))
+    (if to-data-func
+	(funcall to-data-func user-string table pred)
+      user-string)))
 
 (defun completion-to-table-input (orig-fun user-string table &optional pred)
-  "Advice for `test-completion'; convert user string to table input."
-  ;; See FIXME: in completion-get-data-string
-  (let* ((styles
-	  (or (cdr (assq 'styles (completion-metadata user-string table pred)))
-	      (completion--styles (completion-metadata user-string table pred))))
-	 (table-strings
-	  (mapcar
-	   (lambda (style)
-	     (let ((to-table-func (if (functionp table)
-				      (nth 4 (assq style completion-styles-alist)) ;; user to table
+  "Convert user string to table input."
+  ;; See comment in completion-get-data-string about completion-style
+  ;; text-property.
+  (let* ((style (get-text-property 0 'completion-style user-string))
+	 (table-string
+	  (let ((to-table-func (if (functionp table)
+				   (nth 4 (assq style completion-styles-alist)) ;; user to table
 
-				    ;; TABLE is a list of absolute file names
-				    (nth 5 (assq style completion-styles-alist)) ;; user to data
-				    )))
-	       (if to-table-func
-		   (funcall to-table-func user-string table pred)
-		 user-string)))
-	   styles)))
-    (setq table-strings (delete-dups table-strings))
-    (funcall orig-fun (car table-strings) table pred)
+				 ;; TABLE is a list of absolute file names
+				 (nth 5 (assq style completion-styles-alist)) ;; user to data
+				 )))
+	    (if to-table-func
+		(funcall to-table-func user-string table pred)
+	      user-string))))
+    (funcall orig-fun table-string table pred)
     ))
 
 (advice-add #'test-completion :around #'completion-to-table-input)
