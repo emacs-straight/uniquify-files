@@ -176,6 +176,9 @@
 (require 'cl-lib)
 (require 'path-iterator)
 
+(defvar completion-current-style nil
+  "Current active completion style.")
+
 (defconst uniq-file--regexp "^\\(.*\\)<\\([^>]*\\)>?$"
   ;; The trailing '>' is optional so the user can type "<dir" in the
   ;; input buffer to complete directories.
@@ -349,27 +352,6 @@ STRING should be in completion table input format."
 
     matched))
 
-(defun uniq-file--pcm-pattern (string)
-  "Return pcm regexes constructed from STRING (a table format string)."
-  ;; In file-name-all-completions, `completion-regexp-list', is
-  ;; matched against file names and directories relative to `dir'.
-  ;; Thus to handle partial completion delimiters in `string', we
-  ;; construct two regexps from `string'; one from the directory
-  ;; portion, and one from the non-directory portion.
-  (let* ((dir-name (directory-file-name (or (file-name-directory string) "")))
-	 (file-name (file-name-nondirectory string))
-
-	 ;; `completion-pcm--string->pattern' assumes its argument
-	 ;; is anchored at the beginning but not the end; that is
-	 ;; true for `dir-name' only if it is absolute.
-	 (dir-pattern (completion-pcm--string->pattern
-		       (if (file-name-absolute-p dir-name) dir-name (concat "*/" dir-name))))
-	 (dir-regex (completion-pcm--pattern->regex dir-pattern))
-
-	 (file-pattern (completion-pcm--string->pattern file-name))
-	 (file-regex (completion-pcm--pattern->regex file-pattern)))
-    (list dir-regex file-regex)))
-
 (defun uniq-file--pcm-merged-pat (string all point)
   "Return a pcm pattern that is the merged completion of STRING in ALL.
 ALL must be a list of table input format strings?
@@ -412,6 +394,8 @@ Pattern is in reverse order."
   (let (result
 	uniq-all
 	done)
+
+    (setq completion-current-style 'uniquify-file)
 
     ;; Compute result or uniq-all, set done.
     (cond
@@ -519,20 +503,14 @@ nil otherwise."
 	(setq result nil)))
     result))
 
-(defun uniq-file--set-style (all style)
-  "Set completion-style text property on each string in ALL to STYLE."
-  (mapcar
-   (lambda (str)
-     (put-text-property 0 1 'completion-style style str)
-     str)
-   all))
-
 (defun uniq-file-all-completions (user-string table pred point)
   "Implement `completion-all-completions' for uniquify-file."
   ;; Returns list of data format strings (abs file names).
 
   (let ((table-string (uniq-file-to-table-input user-string))
 	all)
+
+    (setq completion-current-style 'uniquify-file)
 
     (cond
      ((functionp table)
@@ -558,8 +536,9 @@ nil otherwise."
 
     (when all
       (setq all (uniq-file--uniquify all (file-name-directory table-string)))
-      (uniq-file--hilit user-string all point)
-      (uniq-file--set-style all 'uniquify-file))
+      (setq all (uniq-file--hilit user-string all point))
+      all
+      )
     ))
 
 (defun uniq-file-get-data-string (user-string table pred)
@@ -601,32 +580,27 @@ nil otherwise."
 
 (defun completion-get-data-string (user-string table pred)
   "Return the data string corresponding to USER-STRING."
-  ;; If the style requires a conversion here, the completion-style
-  ;; text property was set on USER-STRING by the style implementation
-  ;; of all-completions.
-  (let* ((style (get-text-property 0 'completion-style user-string))
-	 (to-data-func (when style (nth 5 (assq style completion-styles-alist)))))
+  (let* ((to-data-func (when completion-current-style (nth 5 (assq completion-current-style completion-styles-alist)))))
     (if to-data-func
-	(funcall to-data-func user-string table pred)
-      user-string)))
+  	(funcall to-data-func user-string table pred)
+      user-string))
+  )
 
 (defun completion-to-table-input (orig-fun user-string table &optional pred)
   "Convert user string to table input."
-  ;; See comment in completion-get-data-string about completion-style
-  ;; text-property.
-  (let* ((style (get-text-property 0 'completion-style user-string))
-	 (table-string
-	  (let ((to-table-func (if (functionp table)
-				   (nth 4 (assq style completion-styles-alist)) ;; user to table
+  (let* ((table-string
+  	  (let ((to-table-func (if (functionp table)
+  				   (nth 4 (assq completion-current-style completion-styles-alist)) ;; user to table
 
-				 ;; TABLE is a list of absolute file names
-				 (nth 5 (assq style completion-styles-alist)) ;; user to data
-				 )))
-	    (if to-table-func
-		(funcall to-table-func user-string table pred)
-	      user-string))))
+  				 ;; TABLE is a list of absolute file names
+  				 (nth 5 (assq completion-current-style completion-styles-alist)) ;; user to data
+  				 )))
+  	    (if to-table-func
+  		(funcall to-table-func user-string table pred)
+  	      user-string))))
     (funcall orig-fun table-string table pred)
-    ))
+    )
+  )
 
 (advice-add #'test-completion :around #'completion-to-table-input)
 
@@ -634,9 +608,17 @@ nil otherwise."
 							  require-match initial-input hist def
 							  inherit-input-method)
   "Advice for `completing-read-default'; convert user string to data string."
-  (let ((user-string (funcall orig-fun prompt collection
+  (let* ((completion-current-style nil)
+	 (user-string (funcall orig-fun prompt collection
 			      predicate require-match initial-input hist def
 			      inherit-input-method)))
+
+    (unless completion-current-style
+      ;; If completion-current-style is not set here, it's because the
+      ;; user invoked `exit-minibuffer' to use the default string, or
+      ;; because the completion functions did not set it (they are
+      ;; legacy).
+      (setq completion-current-style (car (cdr (assq 'styles (completion-metadata "" collection nil))))))
     (completion-get-data-string user-string collection predicate)
     ))
 
@@ -649,6 +631,35 @@ nil otherwise."
 	       "display uniquified filenames."
 	       uniq-file-to-table-input    ;; 4 user to table input format
 	       uniq-file-get-data-string)) ;; 5 user to data format
+
+(defun uniq-file--pcm-pattern (string)
+  "Return pcm regexes constructed from STRING (a table input format string)."
+  ;; `uniq-file-completion-table' matches against directories from a
+  ;; `path-iterator', and files within those directories. Thus we
+  ;; construct two regexps from `string'; one from the entire string
+  ;; (which, if `completion-current-style' is not `uniquify-file', may
+  ;; end in a partial directory name, rather than a file basename),
+  ;; and one from the non-directory portion.
+  (let* ((dir-name (directory-file-name (or (file-name-directory string) "")))
+	 (file-name (file-name-nondirectory string))
+
+	 (file-pattern (completion-pcm--string->pattern file-name))
+	 (file-regex (completion-pcm--pattern->regex file-pattern))
+
+	 ;; `completion-pcm--string->pattern' assumes its argument
+	 ;; is anchored at the beginning but not the end; that is
+	 ;; true for `dir-name' only if it is absolute.
+	 (dir-pattern (completion-pcm--string->pattern
+		       (if (file-name-absolute-p dir-name) dir-name (concat "*/" dir-name))))
+
+	 (dir-regex (completion-pcm--pattern->regex dir-pattern)))
+
+    (unless (eq completion-current-style 'uniquify-file)
+      ;; We enclose the file-regex part in a group, so
+      ;; `uniq-file-completion-table' can tell whether it matched.
+      ;; Strip "\`" from file-regex
+      (setq dir-regex (concat dir-regex "\\(/" (substring file-regex 2) "\\)?")))
+    (list dir-regex file-regex)))
 
 (defun uniq-file-completion-table (path-iter string pred action)
   "Implement a completion table for file names in PATH-ITER.
@@ -673,7 +684,7 @@ case, `completion-ignored-extensions', `completion-regexp-list',
 ACTION is the current completion action; one of:
 
 - nil; return common prefix of all completions of STRING, nil or
-  t; see `try-completion'. This table always returns nil.
+  t; see `try-completion'.
 
 - t; return all completions; see `all-completions'
 
@@ -685,18 +696,12 @@ ACTION is the current completion action; one of:
   `completion-boundaries'.
 
 - 'metadata; return (metadata . ALIST) as defined by
-  `completion-metadata'.
-
-Return a list of absolute file names matching STRING."
+  `completion-metadata'."
 
   ;; This completion table function combines iterating on files in
   ;; PATH-ITER with filtering on USER-STRING and PRED. This is an
   ;; optimization that minimizes storage use when USER-STRING is not
   ;; empty and PRED is non-nil.
-
-  ;; We don't use cl-assert on the path here, because that would be
-  ;; called more often than necessary, and because throwing an error
-  ;; from inside completing-read and/or icomplete is not helpful.
 
   (cond
    ((eq (car-safe action) 'boundaries)
@@ -711,14 +716,10 @@ Return a list of absolute file names matching STRING."
 	   '(styles . (uniquify-file))
 	   )))
 
-   ((null action)
-    ;; Called from `try-completion'; should never get here (see
-    ;; `uniq-file-try-completion').
-    nil)
-
    ((memq action
-	  '(lambda ;; Called from `test-completion'
-	     t))   ;; Called from all-completions
+	  '(nil    ;; Called from `try-completion'.
+	    lambda ;; Called from `test-completion'
+	     t))   ;; Called from `all-completions'.
 
     ;; In file-name-all-completions, `completion-regexp-list', is
     ;; matched against file names and directories relative to `dir'.
@@ -733,11 +734,7 @@ Return a list of absolute file names matching STRING."
 
     (pcase-let ((`(,dir-regex ,file-regex)
 		 (uniq-file--pcm-pattern string)))
-      (let (;; A project that deals only with C files might set
-	    ;; `completion-regexp-list' to match only *.c, *.h, so we
-	    ;; preserve that here.
-	    (completion-regexp-list (cons file-regex completion-regexp-list))
-	    (result nil))
+      (let ((result nil))
 
 	(path-iter-restart path-iter)
 
@@ -745,16 +742,28 @@ Return a list of absolute file names matching STRING."
 	      dir)
 	  (while (setq dir (path-iter-next path-iter))
 	    (when (string-match dir-regex dir)
-	      (cl-mapc
-	       (lambda (file-name)
-		 (let ((absfile (concat (file-name-as-directory dir) file-name)))
-		   (when (and (not (directory-name-p file-name))
-			      (or (null pred)
-				  (funcall pred absfile)))
-		     (push absfile result))))
-	       (file-name-all-completions "" dir))
-	      )))
+	      ;; A project that deals only with C files might set
+	      ;; `completion-regexp-list' to match only *.c, *.h, so we
+	      ;; preserve that here.
+	      (let ((completion-regexp-list
+		     (if (match-string 1 dir)
+			 completion-regexp-list
+		       (cons file-regex completion-regexp-list))))
+	    	(cl-mapc
+		 (lambda (file-name)
+		   (let ((absfile (concat (file-name-as-directory dir) file-name)))
+		     (when (and (not (directory-name-p file-name))
+				(or (null pred)
+				    (funcall pred absfile)))
+		       (push absfile result))))
+		 (file-name-all-completions "" dir))
+		))
+	    ))
 	(cond
+	 ((null action)
+	  ;; Called from `try-completion'; find common prefix of `result'.
+	  (try-completion "" result))
+
          ((eq action 'lambda)
 	  ;; Called from `test-completion'
 	  (uniq-file--valid-completion string result))
@@ -775,9 +784,13 @@ PRED returns non-nil. DEFAULT is the default for completion.
 
 In the user input string, `*' is treated as a wildcard."
   (interactive)
-  (let ((iter (make-path-iterator :user-path-non-recursive (or path load-path))))
+  (let* ((iter (make-path-iterator :user-path-non-recursive (or path load-path)))
+	 (table (apply-partially #'uniq-file-completion-table iter))
+	 (table-styles (cdr (assq 'styles (completion-metadata "" table nil))))
+	 (completion-category-overrides
+	  (list (list 'project-file (cons 'styles table-styles)))))
     (completing-read (or prompt "file: ")
-		     (apply-partially #'uniq-file-completion-table iter)
+		     table
 		     predicate t nil nil default)
     ))
 

@@ -76,121 +76,160 @@
 	 uft-bob2)))
 
 (ert-deftest test-uniq-file-completion-table ()
-  "Test basic functions of table."
+  "Test basic functions of table, with 'uniquify-file completion style."
   ;; grouped by action
-  (should (equal (uniq-file-completion-table uft-iter "fi" nil '(boundaries . ".text"))
+  (let ((completion-current-style 'uniquify-file))
+    (should (equal (uniq-file-completion-table uft-iter "fi" nil '(boundaries . ".text"))
 		   '(boundaries . (0 . 5))))
 
-  (should (equal (uniq-file-completion-table uft-iter "fi" nil 'metadata)
-		 (cons 'metadata
-		       (list
-			'(category . project-file)
-			'(styles   . (uniquify-file))))))
+    (should (equal (uniq-file-completion-table uft-iter "fi" nil 'metadata)
+		   (cons 'metadata
+			 (list
+			  '(category . project-file)
+			  '(styles   . (uniquify-file))))))
 
-  ;; all-completions. We sort the results here to make the test stable
-  (should (equal (sort (uniq-file-completion-table uft-iter "-fi" nil t) #'string-lessp)
-		 (list
-		  (concat uft-alice1 "/bar-file1.text")
-		  (concat uft-alice1 "/bar-file2.text")
-		  (concat uft-alice1 "/foo-file1.text")
-		  (concat uft-alice1 "/foo-file2.text")
-		  (concat uft-alice2 "/bar-file1.text")
-		  (concat uft-alice2 "/bar-file2.text")
-		  (concat uft-alice2 "/foo-file1.text")
-		  (concat uft-alice2 "/foo-file3.text")
- 		  (concat uft-alice2 "/foo-file3.texts")
- 		  (concat uft-Alice-alice3 "/foo-file4.text")
- 		  (concat uft-Bob-alice3   "/foo-file4.text")
-		  (concat uft-bob1 "/foo-file1.text")
-		  (concat uft-bob1 "/foo-file2.text")
-		  (concat uft-bob2 "/foo-file1.text")
-		  (concat uft-bob2 "/foo-file5.text")
-		  (concat uft-root "/foo-file1.text")
-		  (concat uft-root "/foo-file3.texts2")
-		  )))
+    ;; all-completions. We sort the results here to make the test stable
+    (should (equal (sort (uniq-file-completion-table uft-iter "-fi" nil t) #'string-lessp)
+		   (list
+		    (concat uft-alice1 "/bar-file1.text")
+		    (concat uft-alice1 "/bar-file2.text")
+		    (concat uft-alice1 "/foo-file1.text")
+		    (concat uft-alice1 "/foo-file2.text")
+		    (concat uft-alice2 "/bar-file1.text")
+		    (concat uft-alice2 "/bar-file2.text")
+		    (concat uft-alice2 "/foo-file1.text")
+		    (concat uft-alice2 "/foo-file3.text")
+ 		    (concat uft-alice2 "/foo-file3.texts")
+ 		    (concat uft-Alice-alice3 "/foo-file4.text")
+ 		    (concat uft-Bob-alice3   "/foo-file4.text")
+		    (concat uft-bob1 "/foo-file1.text")
+		    (concat uft-bob1 "/foo-file2.text")
+		    (concat uft-bob2 "/foo-file1.text")
+		    (concat uft-bob2 "/foo-file5.text")
+		    (concat uft-root "/foo-file1.text")
+		    (concat uft-root "/foo-file3.texts2")
+		    )))
 
-  (should (equal (sort (uniq-file-completion-table uft-iter "a-1/f-fi" nil t) #'string-lessp)
-		 (list
-		  (concat uft-alice1 "/foo-file1.text")
-		  (concat uft-alice1 "/foo-file2.text")
-		  )))
+    (should (equal (sort (uniq-file-completion-table uft-iter "a-1/f-fi" nil t) #'string-lessp)
+		   (list
+		    (concat uft-alice1 "/foo-file1.text")
+		    (concat uft-alice1 "/foo-file2.text")
+		    )))
 
-  (should (equal (uniq-file-completion-table uft-iter "file1.text<uft-alice1/>" nil t)
-		 ;; some caller did not deuniquify; treated as misspelled; no match
-		 nil))
+    (should (equal (uniq-file-completion-table uft-iter "file1.text<uft-alice1/>" nil t)
+		   ;; some caller did not deuniquify; treated as misspelled; no match
+		   nil))
 
 
-  ;; This table does not implement try-completion
-  (should (equal (uniq-file-completion-table uft-iter "fi" nil nil)
-		 nil))
+    ;; try-completion
+    (should (equal (uniq-file-completion-table uft-iter "a-1/f-fi" nil nil)
+		   (concat uft-alice1 "/foo-file")))
 
-  ;; test-completion
-  (should (equal (uniq-file-completion-table uft-iter (uniq-file-to-table-input "foo-file1.text<alice-1>") nil 'lambda)
-		 t))
+    ;; test-completion
+    (should (equal (uniq-file-completion-table uft-iter (uniq-file-to-table-input "foo-file1.text<alice-1>") nil 'lambda)
+		   t))
 
-  )
+    ))
+
+(ert-deftest test-uniq-file-completion-table-other-style ()
+  "Test basic functions of table, with some other file completion style."
+  ;; Other file completion styles operate on absolute file names only.
+
+  ;; grouped by action
+  (let ((completion-current-style nil))
+    (should (equal (uniq-file-completion-table uft-iter (concat uft-alice1 "/fi") nil '(boundaries . ".text"))
+		   '(boundaries . (0 . 5))))
+
+    (should (equal (uniq-file-completion-table uft-iter (concat uft-alice1 "/fi") nil 'metadata)
+		   (cons 'metadata
+			 (list
+			  '(category . project-file)
+			  '(styles   . (uniquify-file))))))
+
+    ;; all-completions. We sort the results here to make the test stable
+    (should (equal (sort (uniq-file-completion-table uft-iter (concat uft-alice1 "/-fi") nil t) #'string-lessp)
+		   (list
+		    (concat uft-alice1 "/bar-file1.text")
+		    (concat uft-alice1 "/bar-file2.text")
+		    (concat uft-alice1 "/foo-file1.text")
+		    (concat uft-alice1 "/foo-file2.text")
+		    )))
+
+    (should (equal (sort (uniq-file-completion-table uft-iter (concat uft-root "/a-1/f-fi") nil t) #'string-lessp)
+		   (list
+		    (concat uft-alice1 "/foo-file1.text")
+		    (concat uft-alice1 "/foo-file2.text")
+		    )))
+
+    ;; try-completion
+    (should (equal (uniq-file-completion-table uft-iter uft-alice1 nil nil)
+		   (concat uft-alice1 "/")))
+
+
+    ;; test-completion
+    (should (equal (uniq-file-completion-table uft-iter (concat uft-alice1 "/foo-file1.text") nil 'lambda)
+		   t))
+
+    ))
 
 (ert-deftest test-uniq-file-path-completion-table-pred ()
   "Test table with predicate."
-  (should (equal (sort (uniq-file-completion-table
-			uft-iter
-			"-fi"
-			(lambda (absfile) (string= (file-name-directory absfile) (file-name-as-directory uft-alice1)))
-			t)
-		       #'string-lessp)
-		 (list
-		  (concat uft-alice1 "/bar-file1.text")
-		  (concat uft-alice1 "/bar-file2.text")
-		  (concat uft-alice1 "/foo-file1.text")
-		  (concat uft-alice1 "/foo-file2.text")
-		  )))
+  (let ((completion-current-style 'uniquify-file))
+    (should (equal (sort (uniq-file-completion-table
+			  uft-iter
+			  "-fi"
+			  (lambda (absfile) (string= (file-name-directory absfile) (file-name-as-directory uft-alice1)))
+			  t)
+			 #'string-lessp)
+		   (list
+		    (concat uft-alice1 "/bar-file1.text")
+		    (concat uft-alice1 "/bar-file2.text")
+		    (concat uft-alice1 "/foo-file1.text")
+		    (concat uft-alice1 "/foo-file2.text")
+		    )))
 
-  (should (equal (sort (uniq-file-completion-table
-			uft-iter
-			"-fi"
-			(lambda (absfile) (string= (file-name-nondirectory absfile) "bar-file1.text"))
-			t)
-		       #'string-lessp)
-		 (list
-		  (concat uft-alice1 "/bar-file1.text")
-		  (concat uft-alice2 "/bar-file1.text")
-		  )))
+    (should (equal (sort (uniq-file-completion-table
+			  uft-iter
+			  "-fi"
+			  (lambda (absfile) (string= (file-name-nondirectory absfile) "bar-file1.text"))
+			  t)
+			 #'string-lessp)
+		   (list
+		    (concat uft-alice1 "/bar-file1.text")
+		    (concat uft-alice2 "/bar-file1.text")
+		    )))
 
-  )
-
-(defun test-uniq-file-test-completion-1 (table)
-  ;; In normal operation, 'all-completions' is called before
-  ;; test-completion, and it sets the 'completion-style text property.
-  (cl-flet ((ss (str)
-		(put-text-property 0 1 'completion-style 'uniquify-file str)
-		str))
-    (should (equal (test-completion (ss "foo-fi") table)
-		   nil))
-
-    (should (equal (test-completion (ss "f-fi<dir") table)
-		   nil))
-
-    (should (equal (test-completion (ss "foo-file1.text<>") table)
-		   t))
-
-    (should (equal (test-completion (ss "foo-file1.text") table)
-		   t))
-
-    (should (equal (test-completion (ss "foo-file1.text<alice-1/>") table)
-		   t))
-
-    (should (equal (test-completion (ss "foo-file3.tex") table) ;; partial file name
-		   nil))
-
-    (should (equal (test-completion (ss "foo-file3.texts2") table)
-		   t))
-
-    (should (equal (test-completion (ss "bar-file2.text<Alice/alice-") table)
-		   nil))
     ))
 
+(defun test-uniq-file-test-completion-1 (table)
+  (should (equal (test-completion "foo-fi" table)
+		 nil))
+
+  (should (equal (test-completion "f-fi<dir" table)
+		 nil))
+
+  (should (equal (test-completion "foo-file1.text<>" table)
+		 t))
+
+  (should (equal (test-completion "foo-file1.text" table)
+		 t))
+
+  (should (equal (test-completion "foo-file1.text<alice-1/>" table)
+		 t))
+
+  (should (equal (test-completion "foo-file3.tex" table) ;; partial file name
+		 nil))
+
+  (should (equal (test-completion "foo-file3.texts2" table)
+		 t))
+
+  (should (equal (test-completion "bar-file2.text<Alice/alice-" table)
+		 nil))
+  )
+
 (ert-deftest test-uniq-file-test-completion-func ()
-  (let ((table (apply-partially 'uniq-file-completion-table uft-iter)))
+  (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
+	(completion-current-style 'uniquify-file))
     (test-uniq-file-test-completion-1 table)))
 
 (ert-deftest test-uniq-file-test-completion-list ()
@@ -405,6 +444,7 @@
 
 (ert-deftest test-uniq-file-all-completions-noface-func ()
   (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
+	(completion-current-style 'uniquify-file)
 	(completion-ignore-case nil))
     (test-uniq-file-all-completions-noface-1 table)))
 
@@ -416,9 +456,7 @@
 
 (defun test-uniq-file-hilit (pos-list string)
   "Set 'face text property to 'completions-first-difference at
-all positions in POS-LIST in STRING; return new string.
-Also set 'completion-style."
-  (put-text-property 0 1 'completion-style 'uniquify-file string)
+all positions in POS-LIST in STRING; return new string."
   (while pos-list
     (let ((pos (pop pos-list)))
       (put-text-property pos (1+ pos) 'face 'completions-first-difference string)))
@@ -433,6 +471,7 @@ Also set 'completion-style."
   ;; sharing strings that should not be shared because they have
   ;; different text properties.
   (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
+	(completion-current-style 'uniquify-file)
 	(completion-ignore-case nil))
 
     (should (equal-including-properties
@@ -620,6 +659,7 @@ Also set 'completion-style."
 
 (ert-deftest test-uniq-file-try-completion-func ()
   (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
+	(completion-current-style 'uniquify-file)
 	(completion-ignore-case nil))
     (test-uniq-file-try-completion-1 table)))
 
