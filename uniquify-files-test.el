@@ -26,28 +26,9 @@
 ;; completion functions interact with completing-read is not fully
 ;; tested. The following table gives useful test cases for a manual
 ;; interactive test (copy it to an org-mode buffer).
-;;
-;; | input                                         | display                                                                  | result                              | works/comment                                 |
-;; |-----------------------------------------------+--------------------------------------------------------------------------+-------------------------------------+-----------------------------------------------|
-;; | "f-file1" <ret>                               | f-file1(foo-file1.text<){*>*, *A*lice/alice-1/>, *A*lice/alice-2>, ... } | <root>/foo-file1.text               | works                                         |
-;; | "f-file1" <right> <ret>                       | f-file1(foo-file1.text<){*Alice/alice-1/>*. *A*lice/alice-2/>, ... }     | <root>/Alice/alice-1/foo-file1.text | works                                         |
-;; | "f-file1" <right> <tab> <ret>                 | foo-file1.text<{*>*. *A*lice/alice-1/>. *A*lice/alice-2/>, ... }         | <root>/foo-file1.text               | works                                         |
-;; | "f-file1" <tab> <tab> <ret>                   | shows *Completion* buffer                                                | <root>/foo-file1.text               | works                                         |
-;; | "f-file1" <C-tab> <C-tab> <ret>               | cycles foo-file1.text<> [Matched]                                        | <root>/Alice/alice-1foo-file1.text  | works                                         |
-;; | "f-file1<a-2" <ret>                           | f-file1<a-2 [Matched]                                                    | <root>/Alice/alice-2/foo-file1.text | works                                         |
-;; | "b-file2" <tab> <ret>                         | bar-file2.text<./alice-{*1*/> *2*/>}                                     | <root>/Alice/alice-1/bar-file2.text | works except display has bad glyph (./alice-) |
-;; | "b-file2" <tab> <tab> <ret>                   | bar-file2.text<Alice/alice-{1/> 2/>}                                     | ""                                  | works                                         |
-;; | "b-file2" <tab> <tab> <tab> <ret>             | shows *Completion* buffer                                                | ""                                  | works                                         |
-;; | "f-file3" <ret>                               | f-file3(foo-file3.text) [Matched]                                        | <root>/Alice/alice-2/foo-file3.text | works                                         |
-;; | "f-file3" <tab> <ret>                         | foo-file3.text [Matched]                                                 | <root>/Alice/alice-2/foo-file3.text | works                                         |
-;; | "fil"                                         | fil (No matches)                                                         | -                                   | works                                         |
-;; | "*-file1" <tab> <ret>                         | *-file1.text<{*f*oo-file1.text<*A*lice/alice-2/> ... }                   | <root>/Alice/alice-2/foo-file1.text | works                                         |
-;; | "*-file1" <tab> A <tab> 1 <tab> <ret>         | *^-file1.text<Alice/alice-1/>{*bar-file1.text<Alice/alice-1/>*, ...}     | <root>/Alice/alice-1/bar-file1.text | works                                         |
-;; | "*-file1" <tab> A <tab> 1 <tab> <del> f <tab> | foo-file1.text<Alice/alice-1/> [Matched]                                 | <root>/Alice/alice-1/foo-file1.text | works                                         |
-;; | "foo-file1.text<Alice/alice-1> <ret>          | foo-file1.text<Alice/alice-1(/>) [Matched]                               | ""                                  | works                                         |
 
-
-;; See `test-uniquify-file-all-completions-face' below for an explanation of `no-byte-compile'.
+;; See `test-uniquify-file-all-completions-face' below for an
+;; explanation of `no-byte-compile'.
 
 (require 'ert)
 (require 'uniquify-files)
@@ -55,6 +36,8 @@
 (defconst uft-root
   (concat
    (file-name-directory (or load-file-name (buffer-file-name)))
+   ;; We deliberately leave out the trailing '/' here, because users
+   ;; often do; the code must cope.
    "uniquify-files-resources"))
 
 (defconst uft-alice1 (concat uft-root "/Alice/alice-1"))
@@ -64,395 +47,229 @@
 (defconst uft-bob1 (concat uft-root "/Bob/bob-1"))
 (defconst uft-bob2 (concat uft-root "/Bob/bob-2"))
 
-(defconst uft-iter
-  (make-path-iterator
-   :user-path-non-recursive
+(defconst uft-path
    (list uft-root
+	 (concat uft-root "/Alice")
 	 uft-alice1
 	 uft-alice2
 	 uft-Alice-alice3
+	 (concat uft-root "/Bob")
 	 uft-Bob-alice3
 	 uft-bob1
-	 uft-bob2)))
+	 uft-bob2))
 
-(ert-deftest test-uniq-file-completion-table ()
-  "Test basic functions of table, with 'uniquify-file completion style."
-  ;; grouped by action
-  (let ((completion-current-style 'uniquify-file))
-    (should (equal (uniq-file-completion-table uft-iter "fi" nil '(boundaries . ".text"))
-		   '(boundaries . (0 . 5))))
+(defun uft-table ()
+  (let (files)
+    (dolist (dir uft-path)
+      (mapc
+       (lambda (absfile)
+	 (when (and (not (string-equal "." (substring absfile -1)))
+		    (not (string-equal ".." (substring absfile -2)))
+		    (not (file-directory-p absfile)))
+	   (push absfile files)))
+       (directory-files dir t)))
+    (apply-partially 'uniq-file-completion-table (uniq-file-uniquify files))))
 
-    (should (equal (uniq-file-completion-table uft-iter "fi" nil 'metadata)
-		   (cons 'metadata
-			 (list
-			  '(category . project-file)
-			  '(styles   . (uniquify-file))))))
-
-    ;; all-completions. We sort the results here to make the test stable
-    (should (equal (sort (uniq-file-completion-table uft-iter "-fi" nil t) #'string-lessp)
-		   (list
-		    (concat uft-alice1 "/bar-file1.text")
-		    (concat uft-alice1 "/bar-file2.text")
-		    (concat uft-alice1 "/foo-file1.text")
-		    (concat uft-alice1 "/foo-file2.text")
-		    (concat uft-alice2 "/bar-file1.text")
-		    (concat uft-alice2 "/bar-file2.text")
-		    (concat uft-alice2 "/foo-file1.text")
-		    (concat uft-alice2 "/foo-file3.text")
- 		    (concat uft-alice2 "/foo-file3.texts")
- 		    (concat uft-Alice-alice3 "/foo-file4.text")
- 		    (concat uft-Bob-alice3   "/foo-file4.text")
-		    (concat uft-bob1 "/foo-file1.text")
-		    (concat uft-bob1 "/foo-file2.text")
-		    (concat uft-bob2 "/foo-file1.text")
-		    (concat uft-bob2 "/foo-file5.text")
-		    (concat uft-root "/foo-file1.text")
-		    (concat uft-root "/foo-file3.texts2")
-		    )))
-
-    (should (equal (sort (uniq-file-completion-table uft-iter "a-1/f-fi" nil t) #'string-lessp)
-		   (list
-		    (concat uft-alice1 "/foo-file1.text")
-		    (concat uft-alice1 "/foo-file2.text")
-		    )))
-
-    (should (equal (uniq-file-completion-table uft-iter "file1.text<uft-alice1/>" nil t)
-		   ;; some caller did not deuniquify; treated as misspelled; no match
+(ert-deftest test-uniq-file-test-completion ()
+  (let ((table (uft-table)))
+    (should (equal (test-completion "foo-fi" table)
 		   nil))
 
+    (should (equal (test-completion "f-fi<dir" table)
+		   nil))
 
-    ;; try-completion
-    (should (equal (uniq-file-completion-table uft-iter "a-1/f-fi" nil nil)
-		   (concat uft-alice1 "/foo-file")))
-
-    ;; test-completion
-    (should (equal (uniq-file-completion-table uft-iter (uniq-file-to-table-input "foo-file1.text<alice-1>") nil 'lambda)
+    (should (equal (test-completion "foo-file1.text<>" table)
 		   t))
 
-    ))
+    (should (equal (test-completion "foo-file1.text" table)
+		   nil))
 
-(ert-deftest test-uniq-file-completion-table-other-style ()
-  "Test basic functions of table, with some other file completion style."
-  ;; Other file completion styles operate on absolute file names only.
-
-  ;; grouped by action
-  (let ((completion-current-style nil))
-    (should (equal (uniq-file-completion-table uft-iter (concat uft-alice1 "/fi") nil '(boundaries . ".text"))
-		   '(boundaries . (0 . 5))))
-
-    (should (equal (uniq-file-completion-table uft-iter (concat uft-alice1 "/fi") nil 'metadata)
-		   (cons 'metadata
-			 (list
-			  '(category . project-file)
-			  '(styles   . (uniquify-file))))))
-
-    ;; all-completions. We sort the results here to make the test stable
-    (should (equal (sort (uniq-file-completion-table uft-iter (concat uft-alice1 "/-fi") nil t) #'string-lessp)
-		   (list
-		    (concat uft-alice1 "/bar-file1.text")
-		    (concat uft-alice1 "/bar-file2.text")
-		    (concat uft-alice1 "/foo-file1.text")
-		    (concat uft-alice1 "/foo-file2.text")
-		    )))
-
-    (should (equal (sort (uniq-file-completion-table uft-iter (concat uft-root "/a-1/f-fi") nil t) #'string-lessp)
-		   (list
-		    (concat uft-alice1 "/foo-file1.text")
-		    (concat uft-alice1 "/foo-file2.text")
-		    )))
-
-    ;; try-completion
-    (should (equal (uniq-file-completion-table uft-iter uft-alice1 nil nil)
-		   (concat uft-alice1 "/")))
-
-
-    ;; test-completion
-    (should (equal (uniq-file-completion-table uft-iter (concat uft-alice1 "/foo-file1.text") nil 'lambda)
+    (should (equal (test-completion "foo-file1.text<Alice/alice-1/>" table)
 		   t))
 
+    (should (equal (test-completion "foo-file3.tex" table) ;; partial file name
+		   nil))
+
+    (should (equal (test-completion "foo-file3.texts2" table)
+		   t))
+
+    (should (equal (test-completion "bar-file2.text<Alice/alice-" table)
+		   nil))
     ))
 
-(ert-deftest test-uniq-file-path-completion-table-pred ()
-  "Test table with predicate."
-  (let ((completion-current-style 'uniquify-file))
-    (should (equal (sort (uniq-file-completion-table
-			  uft-iter
-			  "-fi"
-			  (lambda (absfile) (string= (file-name-directory absfile) (file-name-as-directory uft-alice1)))
-			  t)
-			 #'string-lessp)
-		   (list
-		    (concat uft-alice1 "/bar-file1.text")
-		    (concat uft-alice1 "/bar-file2.text")
-		    (concat uft-alice1 "/foo-file1.text")
-		    (concat uft-alice1 "/foo-file2.text")
-		    )))
+(ert-deftest test-uniq-file-all-completions-noface ()
+  (let ((table (uft-table))
+	(completion-ignore-case nil))
+    (should (equal
+	     (sort (uniq-file-all-completions "" table nil nil) #'string-lessp)
+	     (list
+	      "bar-file1.text<alice-1/>"
+	      "bar-file1.text<alice-2/>"
+	      "bar-file2.text<alice-1/>"
+	      "bar-file2.text<alice-2/>"
+	      "foo-file1.text<>"
+	      "foo-file1.text<Alice/alice-1/>"
+	      "foo-file1.text<Alice/alice-2/>"
+	      "foo-file1.text<Bob/bob-1/>"
+	      "foo-file1.text<Bob/bob-2/>"
+	      "foo-file2.text<Alice/alice-1/>"
+	      "foo-file2.text<Bob/bob-1/>"
+	      "foo-file3.text"
+	      "foo-file3.texts"
+	      "foo-file3.texts2"
+	      "foo-file4.text<Alice/alice-3/>"
+	      "foo-file4.text<Bob/alice-3/>"
+	      "foo-file5.text"
+              "wisitoken-generate-packrat-test.text"
+              "wisitoken-syntax_trees-test.text"
+              "wisitoken-text_io_trace.text"
+	      )))
 
-    (should (equal (sort (uniq-file-completion-table
-			  uft-iter
-			  "-fi"
-			  (lambda (absfile) (string= (file-name-nondirectory absfile) "bar-file1.text"))
-			  t)
-			 #'string-lessp)
-		   (list
-		    (concat uft-alice1 "/bar-file1.text")
-		    (concat uft-alice2 "/bar-file1.text")
-		    )))
+    (should (equal
+	     (sort (uniq-file-all-completions "*-fi" table nil nil) #'string-lessp)
+	     (list
+	      "bar-file1.text<alice-1/>"
+	      "bar-file1.text<alice-2/>"
+	      "bar-file2.text<alice-1/>"
+	      "bar-file2.text<alice-2/>"
+	      "foo-file1.text<>"
+	      "foo-file1.text<Alice/alice-1/>"
+	      "foo-file1.text<Alice/alice-2/>"
+	      "foo-file1.text<Bob/bob-1/>"
+	      "foo-file1.text<Bob/bob-2/>"
+	      "foo-file2.text<Alice/alice-1/>"
+	      "foo-file2.text<Bob/bob-1/>"
+	      "foo-file3.text"
+	      "foo-file3.texts"
+	      "foo-file3.texts2"
+	      "foo-file4.text<Alice/alice-3/>"
+	      "foo-file4.text<Bob/alice-3/>"
+	      "foo-file5.text"
+	      )))
 
-    ))
+    (should (equal
+	     (sort (uniq-file-all-completions "a" table nil nil) #'string-lessp)
+	     ;; Should _not_ match directory names
+	     nil))
 
-(defun test-uniq-file-test-completion-1 (table)
-  (should (equal (test-completion "foo-fi" table)
-		 nil))
+    (should (equal
+	     (sort (uniq-file-all-completions "b" table nil nil) #'string-lessp)
+	     (list
+	      "bar-file1.text<alice-1/>"
+	      "bar-file1.text<alice-2/>"
+	      "bar-file2.text<alice-1/>"
+	      "bar-file2.text<alice-2/>"
+	      )))
 
-  (should (equal (test-completion "f-fi<dir" table)
-		 nil))
+    (should (equal
+	     (sort (uniq-file-all-completions "foo" table nil nil) #'string-lessp)
+	     (list
+	      "foo-file1.text<>"
+	      "foo-file1.text<Alice/alice-1/>"
+	      "foo-file1.text<Alice/alice-2/>"
+	      "foo-file1.text<Bob/bob-1/>"
+	      "foo-file1.text<Bob/bob-2/>"
+	      "foo-file2.text<Alice/alice-1/>"
+	      "foo-file2.text<Bob/bob-1/>"
+	      "foo-file3.text"
+	      "foo-file3.texts"
+	      "foo-file3.texts2"
+	      "foo-file4.text<Alice/alice-3/>"
+	      "foo-file4.text<Bob/alice-3/>"
+	      "foo-file5.text"
+	      )))
 
-  (should (equal (test-completion "foo-file1.text<>" table)
-		 t))
+    (should (equal
+	     (sort (uniq-file-all-completions "f-file2" table nil nil) #'string-lessp)
+	     (list
+	      "foo-file2.text<Alice/alice-1/>"
+	      "foo-file2.text<Bob/bob-1/>"
+	      )))
 
-  (should (equal (test-completion "foo-file1.text" table)
-		 t))
+    (should (equal
+	     (sort (uniq-file-all-completions "b-fi<" table nil nil) #'string-lessp)
+	     (list
+	      "bar-file1.text<alice-1/>"
+	      "bar-file1.text<alice-2/>"
+	      "bar-file2.text<alice-1/>"
+	      "bar-file2.text<alice-2/>"
+	      )))
 
-  (should (equal (test-completion "foo-file1.text<alice-1/>" table)
-		 t))
+    (should (equal
+	     (sort (uniq-file-all-completions "f-file<" table nil nil) #'string-lessp)
+	     (list
+	      "foo-file1.text<>"
+	      "foo-file1.text<Alice/alice-1/>"
+	      "foo-file1.text<Alice/alice-2/>"
+	      "foo-file1.text<Bob/bob-1/>"
+	      "foo-file1.text<Bob/bob-2/>"
+	      "foo-file2.text<Alice/alice-1/>"
+	      "foo-file2.text<Bob/bob-1/>"
+	      "foo-file3.text"
+	      "foo-file3.texts"
+	      "foo-file3.texts2"
+	      "foo-file4.text<Alice/alice-3/>"
+	      "foo-file4.text<Bob/alice-3/>"
+	      "foo-file5.text"
+	      )))
 
-  (should (equal (test-completion "foo-file3.tex" table) ;; partial file name
-		 nil))
-
-  (should (equal (test-completion "foo-file3.texts2" table)
-		 t))
-
-  (should (equal (test-completion "bar-file2.text<Alice/alice-" table)
-		 nil))
-  )
-
-(ert-deftest test-uniq-file-test-completion-func ()
-  (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
-	(completion-current-style 'uniquify-file))
-    (test-uniq-file-test-completion-1 table)))
-
-(ert-deftest test-uniq-file-test-completion-list ()
-  (let ((table (path-iter-all-files uft-iter))
-	(completion-styles '(uniquify-file))) ;; FIXME: need a way to specify category
-    (test-uniq-file-test-completion-1 table)))
-
-(defun test-uniq-file-all-completions-noface-1 (table)
-  (should (equal
-	   (sort (uniq-file-all-completions "" table nil nil) #'string-lessp)
-	   (list
-	    "bar-file1.text<alice-1/>"
-	    "bar-file1.text<alice-2/>"
-	    "bar-file2.text<alice-1/>"
-	    "bar-file2.text<alice-2/>"
-	    "foo-file1.text<>"
-	    "foo-file1.text<Alice/alice-1/>"
-	    "foo-file1.text<Alice/alice-2/>"
-	    "foo-file1.text<Bob/bob-1/>"
-	    "foo-file1.text<Bob/bob-2/>"
-	    "foo-file2.text<Alice/alice-1/>"
-	    "foo-file2.text<Bob/bob-1/>"
-	    "foo-file3.text"
-	    "foo-file3.texts"
-	    "foo-file3.texts2"
-	    "foo-file4.text<Alice/alice-3/>"
-	    "foo-file4.text<Bob/alice-3/>"
-	    "foo-file5.text"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "*-fi" table nil nil) #'string-lessp)
-	   (list
-	    "bar-file1.text<alice-1/>"
-	    "bar-file1.text<alice-2/>"
-	    "bar-file2.text<alice-1/>"
-	    "bar-file2.text<alice-2/>"
-	    "foo-file1.text<>"
-	    "foo-file1.text<Alice/alice-1/>"
-	    "foo-file1.text<Alice/alice-2/>"
-	    "foo-file1.text<Bob/bob-1/>"
-	    "foo-file1.text<Bob/bob-2/>"
-	    "foo-file2.text<Alice/alice-1/>"
-	    "foo-file2.text<Bob/bob-1/>"
-	    "foo-file3.text"
-	    "foo-file3.texts"
-	    "foo-file3.texts2"
-	    "foo-file4.text<Alice/alice-3/>"
-	    "foo-file4.text<Bob/alice-3/>"
-	    "foo-file5.text"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "b" table nil nil) #'string-lessp)
-	   (list
-	    "bar-file1.text<alice-1/>"
-	    "bar-file1.text<alice-2/>"
-	    "bar-file2.text<alice-1/>"
-	    "bar-file2.text<alice-2/>"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "foo" table nil nil) #'string-lessp)
-	   (list
-	    "foo-file1.text<>"
-	    "foo-file1.text<Alice/alice-1/>"
-	    "foo-file1.text<Alice/alice-2/>"
-	    "foo-file1.text<Bob/bob-1/>"
-	    "foo-file1.text<Bob/bob-2/>"
-	    "foo-file2.text<Alice/alice-1/>"
-	    "foo-file2.text<Bob/bob-1/>"
-	    "foo-file3.text"
-	    "foo-file3.texts"
-	    "foo-file3.texts2"
-	    "foo-file4.text<Alice/alice-3/>"
-	    "foo-file4.text<Bob/alice-3/>"
-	    "foo-file5.text"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "f-file2" table nil nil) #'string-lessp)
-	   (list
-	    "foo-file2.text<Alice/alice-1/>"
-	    "foo-file2.text<Bob/bob-1/>"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "b-fi<" table nil nil) #'string-lessp)
-	   (list
-	    "bar-file1.text<alice-1/>"
-	    "bar-file1.text<alice-2/>"
-	    "bar-file2.text<alice-1/>"
-	    "bar-file2.text<alice-2/>"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "f-file<" table nil nil) #'string-lessp)
-	   (list
-	    "foo-file1.text<>"
-	    "foo-file1.text<Alice/alice-1/>"
-	    "foo-file1.text<Alice/alice-2/>"
-	    "foo-file1.text<Bob/bob-1/>"
-	    "foo-file1.text<Bob/bob-2/>"
-	    "foo-file2.text<Alice/alice-1/>"
-	    "foo-file2.text<Bob/bob-1/>"
-	    "foo-file3.text"
-	    "foo-file3.texts"
-	    "foo-file3.texts2"
-	    "foo-file4.text<Alice/alice-3/>"
-	    "foo-file4.text<Bob/alice-3/>"
-	    "foo-file5.text"
-	    )))
-
-  (should (equal
-	   (sort (uniq-file-all-completions "b-fi<a-" table nil nil) #'string-lessp)
-	   (list
-	    "bar-file1.text<alice-1/>"
-	    "bar-file1.text<alice-2/>"
-	    "bar-file2.text<alice-1/>"
-	    "bar-file2.text<alice-2/>"
-	    )))
-
-  (let ((completion-ignore-case t))
     (should (equal
 	     (sort (uniq-file-all-completions "b-fi<a-" table nil nil) #'string-lessp)
 	     (list
-	      "bar-file1.text<Alice/alice-1/>"
-	      "bar-file1.text<Alice/alice-2/>"
-	      "bar-file2.text<Alice/alice-1/>"
-	      "bar-file2.text<Alice/alice-2/>"
+	      "bar-file1.text<alice-1/>"
+	      "bar-file1.text<alice-2/>"
+	      "bar-file2.text<alice-1/>"
+	      "bar-file2.text<alice-2/>"
 	      )))
-    )
 
-  (should (equal
-	   (sort (uniq-file-all-completions "b-fi<a-1" table nil nil) #'string-lessp)
-	   (list "bar-file1.text<alice-1/>"
-		 "bar-file2.text<alice-1/>")))
-
-  (let ((completion-ignore-case t))
     (should (equal
 	     (sort (uniq-file-all-completions "b-fi<a-1" table nil nil) #'string-lessp)
-	     (list "bar-file1.text<Alice/alice-1/>"
-		   "bar-file2.text<Alice/alice-1/>")))
-    )
+	     (list "bar-file1.text<alice-1/>"
+		   "bar-file2.text<alice-1/>")))
 
-  (should (equal (uniq-file-all-completions "f-file1.text<a-1" table nil nil)
-		 (list "foo-file1.text<alice-1/>")))
-
-  (let ((completion-ignore-case t))
     (should (equal (uniq-file-all-completions "f-file1.text<a-1" table nil nil)
 		   (list "foo-file1.text<Alice/alice-1/>")))
-    )
 
-  (should (equal (sort (uniq-file-all-completions "f-file1.text<al" table nil nil) #'string-lessp)
-		 (list
-		  "foo-file1.text<alice-1/>"
-		  "foo-file1.text<alice-2/>")))
-
-  (let ((completion-ignore-case t))
     (should (equal (sort (uniq-file-all-completions "f-file1.text<al" table nil nil) #'string-lessp)
 		   (list
 		    "foo-file1.text<Alice/alice-1/>"
 		    "foo-file1.text<Alice/alice-2/>")))
-    )
 
-  (should (equal (sort (uniq-file-all-completions "f-file4.text<a-3" table nil nil) #'string-lessp)
-		 (list
-		  "foo-file4.text<Alice/alice-3/>"
-		  "foo-file4.text<Bob/alice-3/>")))
+    (should (equal (sort (uniq-file-all-completions "f-file4.text<a-3" table nil nil) #'string-lessp)
+		   (list
+		    "foo-file4.text<Alice/alice-3/>"
+		    "foo-file4.text<Bob/alice-3/>")))
 
-  (should (equal (sort (uniq-file-all-completions "foo-file4.text<Bob" table nil nil) #'string-lessp)
-		 (list
-		  "foo-file4.text<Bob/alice-3/>")))
+    (should (equal (sort (uniq-file-all-completions "foo-file4.text<Bob" table nil nil) #'string-lessp)
+		   (list
+		    "foo-file4.text<Bob/alice-3/>")))
 
-  (should (equal (uniq-file-all-completions "f-file5" table nil nil)
-		 (list "foo-file5.text")))
+    (should (equal (uniq-file-all-completions "f-file5" table nil nil)
+		   (list "foo-file5.text")))
 
-  (should (equal (uniq-file-all-completions "foo-file1.text<Alice/alice-1/>" table nil nil)
-		 (list "foo-file1.text<Alice/alice-1/>")))
+    (should (equal (uniq-file-all-completions "foo-file1.text<Alice/alice-1/>" table nil nil)
+		   (list "foo-file1.text<Alice/alice-1/>")))
 
-  (should (equal
-	   (sort (uniq-file-all-completions "b-fi<a>" table nil nil) #'string-lessp)
-	   (list
-	    "bar-file1.text<alice-1/>"
-	    "bar-file1.text<alice-2/>"
-	    "bar-file2.text<alice-1/>"
-	    "bar-file2.text<alice-2/>"
-	    )))
-
-  (let ((completion-ignore-case t))
     (should (equal
 	     (sort (uniq-file-all-completions "b-fi<a>" table nil nil) #'string-lessp)
 	     (list
-	      "bar-file1.text<Alice/alice-1/>"
-	      "bar-file1.text<Alice/alice-2/>"
-	      "bar-file2.text<Alice/alice-1/>"
-	      "bar-file2.text<Alice/alice-2/>"
+	      "bar-file1.text<alice-1/>"
+	      "bar-file1.text<alice-2/>"
+	      "bar-file2.text<alice-1/>"
+	      "bar-file2.text<alice-2/>"
 	      )))
-    )
 
-  (should (equal
-	   (sort (uniq-file-all-completions "foo-file1.text<>" table nil nil) #'string-lessp)
-	   ;; This is complete but not unique, because the directory part matches multiple directories.
-	   (list
-	    "foo-file1.text<>"
-	    "foo-file1.text<Alice/alice-1/>"
-	    "foo-file1.text<Alice/alice-2/>"
-	    "foo-file1.text<Bob/bob-1/>"
-	    "foo-file1.text<Bob/bob-2/>"
-	    )))
-  )
-
-(ert-deftest test-uniq-file-all-completions-noface-func ()
-  (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
-	(completion-current-style 'uniquify-file)
-	(completion-ignore-case nil))
-    (test-uniq-file-all-completions-noface-1 table)))
-
-(ert-deftest test-uniq-file-all-completions-noface-list ()
-  (let ((table (path-iter-all-files uft-iter))
-	(completion-ignore-case nil)
-	(completion-styles '(uniquify-file))) ;; FIXME: need a way to specify category
-    (test-uniq-file-all-completions-noface-1 table)))
+    (should (equal
+	     (sort (uniq-file-all-completions "foo-file1.text<>" table nil nil) #'string-lessp)
+	     ;; This is complete but not unique, because the directory part matches multiple directories.
+	     (list
+	      "foo-file1.text<>"
+	      "foo-file1.text<Alice/alice-1/>"
+	      "foo-file1.text<Alice/alice-2/>"
+	      "foo-file1.text<Bob/bob-1/>"
+	      "foo-file1.text<Bob/bob-2/>"
+	      )))
+    ))
 
 (defun test-uniq-file-hilit (pos-list string)
   "Set 'face text property to 'completions-first-difference at
@@ -463,60 +280,15 @@ all positions in POS-LIST in STRING; return new string."
   string)
 
 (ert-deftest test-uniq-file-all-completions-face ()
-  ;; all-completions tested above without considering face text
+  ;; `all-completions' tested above without considering face text
   ;; properties; here we test just those properties. Test cases are
   ;; the same as above.
   ;;
   ;; WORKAROUND: byte-compiling this test makes it fail; it appears to be
   ;; sharing strings that should not be shared because they have
   ;; different text properties.
-  (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
-	(completion-current-style 'uniquify-file)
+  (let ((table (uft-table))
 	(completion-ignore-case nil))
-
-    (should (equal-including-properties
-	     (sort (uniq-file-all-completions "" table nil nil) #'string-lessp)
-	     (list
-	      (test-uniq-file-hilit '(0) "bar-file1.text<alice-1/>")
-	      (test-uniq-file-hilit '(0) "bar-file1.text<alice-2/>")
-	      (test-uniq-file-hilit '(0) "bar-file2.text<alice-1/>")
-	      (test-uniq-file-hilit '(0) "bar-file2.text<alice-2/>")
-	      (test-uniq-file-hilit '(0) "foo-file1.text<>")
-	      (test-uniq-file-hilit '(0) "foo-file1.text<Alice/alice-1/>")
-	      (test-uniq-file-hilit '(0) "foo-file1.text<Alice/alice-2/>")
-	      (test-uniq-file-hilit '(0) "foo-file1.text<Bob/bob-1/>")
-	      (test-uniq-file-hilit '(0) "foo-file1.text<Bob/bob-2/>")
-	      (test-uniq-file-hilit '(0) "foo-file2.text<Alice/alice-1/>")
-	      (test-uniq-file-hilit '(0) "foo-file2.text<Bob/bob-1/>")
-	      (test-uniq-file-hilit '(0) "foo-file3.text")
-	      (test-uniq-file-hilit '(0) "foo-file3.texts")
-	      (test-uniq-file-hilit '(0) "foo-file3.texts2")
-	      (test-uniq-file-hilit '(0) "foo-file4.text<Alice/alice-3/>")
-	      (test-uniq-file-hilit '(0) "foo-file4.text<Bob/alice-3/>")
-	      (test-uniq-file-hilit '(0) "foo-file5.text")
-	      )))
-
-    (should (equal-including-properties
-	     (sort (uniq-file-all-completions "*-fi" table nil nil) #'string-lessp)
-	     (list
-	      (test-uniq-file-hilit '(0 8) "bar-file1.text<alice-1/>")
-	      (test-uniq-file-hilit '(0 8) "bar-file1.text<alice-2/>")
-	      (test-uniq-file-hilit '(0 8) "bar-file2.text<alice-1/>")
-	      (test-uniq-file-hilit '(0 8) "bar-file2.text<alice-2/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file1.text<>")
-	      (test-uniq-file-hilit '(0 8) "foo-file1.text<Alice/alice-1/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file1.text<Alice/alice-2/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file1.text<Bob/bob-1/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file1.text<Bob/bob-2/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file2.text<Alice/alice-1/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file2.text<Bob/bob-1/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file3.text")
-	      (test-uniq-file-hilit '(0 8) "foo-file3.texts")
-	      (test-uniq-file-hilit '(0 8) "foo-file3.texts2")
-	      (test-uniq-file-hilit '(0 8) "foo-file4.text<Alice/alice-3/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file4.text<Bob/alice-3/>")
-	      (test-uniq-file-hilit '(0 8) "foo-file5.text")
-	      )))
 
     (should (equal-including-properties
 	     (sort (uniq-file-all-completions "b" table nil nil) #'string-lessp)
@@ -560,10 +332,20 @@ all positions in POS-LIST in STRING; return new string."
 	      (test-uniq-file-hilit '(14) "foo-file3.texts2")
 	      )))
 
+    ;; Two places for possible completion, with different intervening text
+    (should (equal-including-properties
+	     (sort (uniq-file-all-completions "wisi-te" table nil 5) #'string-lessp)
+	     (list                         ;; 0         10        20        30
+	      (test-uniq-file-hilit '(10 18) "wisitoken-generate-packrat-test.text")
+	      (test-uniq-file-hilit '(10 25) "wisitoken-syntax_trees-test.text")
+	      (test-uniq-file-hilit '(10 12) "wisitoken-text_io_trace.text")
+	      )))
     ))
 
-(defun test-uniq-file-try-completion-1 (table)
-  (let (string)
+(ert-deftest test-uniq-file-try-completion ()
+  (let ((table (uft-table))
+	(completion-ignore-case nil)
+        string)
 
     (setq string "fo")
     (should (equal (uniq-file-try-completion string table nil (length string))
@@ -575,14 +357,14 @@ all positions in POS-LIST in STRING; return new string."
 
     (setq string "fo<al")
     (should (equal (uniq-file-try-completion string table nil 2)
-		   '("foo-file<alice-" . 8)))
+		   '("foo-file.text<alice-" . 8)))
     (should (equal (uniq-file-try-completion string table nil 5)
 		   '("foo-file<alice-" . 15)))
 
     (let ((completion-ignore-case t))
       (setq string "fo<al")
       (should (equal (uniq-file-try-completion string table nil 2)
-		     '("foo-file<alice" . 8)))
+		     '("foo-file.text<alice" . 8)))
       (should (equal (uniq-file-try-completion string table nil 5)
 		     '("foo-file<alice" . 14)))
       )
@@ -591,15 +373,11 @@ all positions in POS-LIST in STRING; return new string."
     (should (equal (uniq-file-try-completion string table nil (length string))
 		   '("foo-file3.text" . 14)))
 
-    (setq string "f-file1.text<a-1") ;; unique but not valid
+    (setq string "f-file1.text<a-1")
+    ;; Not unique, because "a" accidentally matches "packages" in
+    ;; uft-root-dir, and "-" covers "/".  Also not valid.
     (should (equal (uniq-file-try-completion string table nil (length string))
-		   '("foo-file1.text<alice-1/>" . 24)))
-
-    (let ((completion-ignore-case t))
-      (setq string "f-file1.text<a-1") ;; unique but not valid
-      (should (equal (uniq-file-try-completion string table nil (length string))
-		     '("foo-file1.text<Alice/alice-1/>" . 30)))
-      )
+		   '("foo-file1.text<Alice/alice-1/>" . 30)))
 
     (setq string "foo-file1.text") ;; valid but not unique
     (should (equal (uniq-file-try-completion string table nil (length string))
@@ -613,15 +391,9 @@ all positions in POS-LIST in STRING; return new string."
     (should (equal (uniq-file-try-completion string table nil (length string))
 		   (cons "foo-file1.text<>" 15)))
 
-    (setq string "foo-file1.text<alice-1/>") ;; valid and unique
+    (setq string "foo-file1.text<Alice/alice-1/>") ;; valid and unique
     (should (equal (uniq-file-try-completion string table nil (length string))
 		   t))
-
-    (let ((completion-ignore-case t))
-      (setq string "foo-file1.text<alice-1/>") ;; valid and unique, but accidental match on Alice
-      (should (equal (uniq-file-try-completion string table nil (length string))
-		     '("foo-file1.text<Alice/alice-1/>" . 30)))
-      )
 
     (setq string "foo-file3.texts") ;; not unique, valid
     (should (equal (uniq-file-try-completion string table nil (length string))
@@ -657,147 +429,58 @@ all positions in POS-LIST in STRING; return new string."
 		     (cons "foo-file" 8))))
     ))
 
-(ert-deftest test-uniq-file-try-completion-func ()
-  (let ((table (apply-partially 'uniq-file-completion-table uft-iter))
-	(completion-current-style 'uniquify-file)
-	(completion-ignore-case nil))
-    (test-uniq-file-try-completion-1 table)))
-
-(ert-deftest test-uniq-file-try-completion-list ()
-  (let ((table (path-iter-all-files uft-iter))
-	(completion-ignore-case nil)
-	(completion-styles '(uniquify-file))) ;; FIXME: need a way to specify category
-    (test-uniq-file-try-completion-1 table)))
-
-(ert-deftest test-uniq-file-get-data-string ()
-  (let ((table (apply-partially 'uniq-file-completion-table uft-iter)))
-
-    (should (equal (uniq-file-get-data-string "foo-file1.text<alice-1>" table nil)
-		   (concat uft-alice1 "/foo-file1.text")))
-
-    (should (equal (uniq-file-get-data-string "foo-file3.text" table nil)
-		   (concat uft-alice2 "/foo-file3.text")))
-
-    (should (equal (uniq-file-get-data-string "foo-file3.texts" table nil)
-		   (concat uft-alice2 "/foo-file3.texts")))
-
-    (should (equal (uniq-file-get-data-string "foo-file3.texts2" table nil)
-		   (concat uft-root "/foo-file3.texts2")))
-    ))
-
-(ert-deftest test-uniq-file-to-table-input ()
-  (should (equal (uniq-file-to-table-input "fi")
-		 "fi"))
-
-  (should (equal (uniq-file-to-table-input "fi<di")
-		 "di/fi"))
-
-  (should (equal (uniq-file-to-table-input "foo-file1.text")
-		 "foo-file1.text"))
-
-  (should (equal (uniq-file-to-table-input "file1<Alice/alice-2/>")
-		 "Alice/alice-2/file1"))
-
-  (should (equal (uniq-file-to-table-input "file1<>")
-		 "file1"))
-
-  (should (equal (uniq-file-to-table-input "file1.text<Alice/alice-2/>")
-		 "Alice/alice-2/file1.text"))
-
-  (should (equal (uniq-file-to-table-input "bar-file2.text<Alice/alice-")
-		 "Alice/alice-/bar-file2.text"))
-
-  )
-
 (ert-deftest test-uniq-file-uniquify ()
-  (should (equal (uniq-file--uniquify
-		  '("/Alice/alice1/file1.text" "/Alice/alice1/file2.text"
-		    "/Alice/alice2/file1.text" "/Alice/alice2/file3.text"
-		    "/Bob/bob1/file1.text")
-		  nil)
-		 (list "file1.text<Alice/alice1/>"
-		       "file1.text<Alice/alice2/>"
-		       "file1.text<Bob/bob1/>"
-		       "file2.text"
-		       "file3.text")))
+  (should (equal (uniq-file-uniquify
+		  '("/Alice/alice1/file1.text"
+                    "/Alice/alice1/file2.text"
+		    "/Alice/alice2/file1.text"
+                    "/Alice/alice2/file3.text"
+		    "/Bob/bob1/file1.text"))
+		 (list
+		  '("file3.text"                . "/Alice/alice2/file3.text")
+		  '("file2.text"                . "/Alice/alice1/file2.text")
+		  '("file1.text<Bob/bob1/>"     . "/Bob/bob1/file1.text")
+		  '("file1.text<Alice/alice2/>" . "/Alice/alice2/file1.text")
+                  '("file1.text<Alice/alice1/>" . "/Alice/alice1/file1.text")
+                  )))
 
-  (should (equal (uniq-file--uniquify '("/Alice/alice1/file1.text" "/Alice/alice2/file1.text") nil)
-		 (list "file1.text<alice1/>" "file1.text<alice2/>")))
-
-  (should (equal (uniq-file--uniquify '("/alice1/file2.text") nil)
-		 (list "file2.text")))
-
-  (should (equal (uniq-file--uniquify
-		  '("c:/tmp/test/alice-1/bar-file1.text"
-		    "c:/tmp/test/alice-1/bar-file2.text")
-		  "a-1")
-		 (list "bar-file1.text<alice-1/>" "bar-file2.text<alice-1/>")))
-
-  (should (equal (uniq-file--uniquify
-		  '("c:/tmp/Alice/alice-1/bar-file1.text"
-		    "c:/tmp/Alice/alice-1/bar-file2.text"
-		    "c:/tmp/Alice/alice-2/bar-file2.text")
-		  "a-")
-
-		 ;; FIXME: This result reflects a bug in
-		 ;; `completion-pcm--pattern->regex'; "a-" becomes
-		 ;; "a.*?-", but it should be (concat "a[^"
-		 ;; wildcards "]*-".
-
-		 (list "bar-file1.text<Alice/alice-1/>"
-		       "bar-file2.text<Alice/alice-1/>"
-		       "bar-file2.text<Alice/alice-2/>")))
-
-  (should (equal (uniq-file--uniquify
-		  '("c:/tmp/Alice/alice-1/bar-file1.text"
-		    "c:/tmp/Alice/alice-1/bar-file2.text"
-		    "c:/tmp/Alice/alice-2/bar-file2.text")
-		  "Al/a-")
-		 (list "bar-file1.text<Alice/alice-1/>"
-		       "bar-file2.text<Alice/alice-1/>"
-		       "bar-file2.text<Alice/alice-2/>")))
-
-  ;; From "foo-file1.text<>"
-  (should (equal (uniq-file--uniquify
+  (should (equal (uniq-file-uniquify
 		  (list
 		   (concat uft-alice1 "/foo-file1.text")
 		   (concat uft-alice2 "/foo-file1.text")
 		   (concat uft-bob1 "/foo-file1.text")
 		   (concat uft-bob2 "/foo-file1.text")
 		   (concat uft-root "/foo-file1.text")
-		   )
-		  "")
-		 '(
-		   "foo-file1.text<Alice/alice-1/>"
-		   "foo-file1.text<Alice/alice-2/>"
-		   "foo-file1.text<Bob/bob-1/>"
-		   "foo-file1.text<Bob/bob-2/>"
-		   "foo-file1.text<>"
-		   )))
+		   ))
+		 (list
+		  (cons "foo-file1.text<>"               (concat uft-root "/foo-file1.text"))
+		  (cons "foo-file1.text<Bob/bob-2/>"     (concat uft-bob2 "/foo-file1.text"))
+                  (cons "foo-file1.text<Bob/bob-1/>"     (concat uft-bob1 "/foo-file1.text"))
+                  (cons "foo-file1.text<Alice/alice-2/>" (concat uft-alice2 "/foo-file1.text"))
+		  (cons "foo-file1.text<Alice/alice-1/>" (concat uft-alice1 "/foo-file1.text"))
+                  )))
 
-  ;; from cedet-global-test
-  (should (equal (uniq-file--uniquify
+  (should (equal (uniq-file-uniquify
 		  (list
 		   (concat uft-alice1 "/bar-file1.c")
 		   (concat uft-alice1 "/bar-file2.c")
 		   (concat uft-alice2 "/bar-file1.c")
 		   (concat uft-alice2 "/bar-file2.c")
-		   (concat uft-bob1 "/foo-file1.c") ;; 'b' in directory part; accidental match
+		   (concat uft-bob1 "/foo-file1.c")
 		   (concat uft-bob1 "/foo-file2.c")
 		   (concat uft-bob2 "/foo-file1.c")
 		   (concat uft-bob2 "/foo-file5.c")
-		   )
-		  nil)
-		 '(
-		   "bar-file1.c<alice-1/>"
-		   "bar-file1.c<alice-2/>"
-		   "bar-file2.c<alice-1/>"
-		   "bar-file2.c<alice-2/>"
-		   "foo-file1.c<bob-1/>"
-		   "foo-file1.c<bob-2/>"
-		   "foo-file2.c"
-		   "foo-file5.c"
-		   )))
+		   ))
+		 (list
+                  (cons "foo-file5.c"           (concat uft-bob2 "/foo-file5.c"))
+		  (cons "foo-file2.c"           (concat uft-bob1 "/foo-file2.c"))
+                  (cons "foo-file1.c<bob-2/>"   (concat uft-bob2 "/foo-file1.c"))
+                  (cons "foo-file1.c<bob-1/>"   (concat uft-bob1 "/foo-file1.c"))
+                  (cons "bar-file2.c<alice-2/>" (concat uft-alice2 "/bar-file2.c"))
+                  (cons "bar-file2.c<alice-1/>" (concat uft-alice1 "/bar-file2.c"))
+                  (cons "bar-file1.c<alice-2/>" (concat uft-alice2 "/bar-file1.c"))
+                  (cons "bar-file1.c<alice-1/>" (concat uft-alice1 "/bar-file1.c"))
+                  )))
   )
 
 (provide 'uniquify-files-test)
