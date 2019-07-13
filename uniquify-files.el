@@ -1,4 +1,4 @@
-4;;; uniquify-files.el --- Completion style for files, minimizing directories  -*- lexical-binding:t -*-
+;;; uniquify-files.el --- Completion style for files, minimizing directories  -*- lexical-binding:t -*-
 ;;
 ;; Copyright (C) 2019  Free Software Foundation, Inc.
 ;;
