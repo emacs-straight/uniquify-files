@@ -6,7 +6,7 @@
 ;; Maintainer: Stephen Leake <stephen_leake@stephe-leake.org>
 ;; Keywords: completion table
 ;;   uniquify
-;; Version: 1.0
+;; Version: 1.0.1
 ;; package-requires: ((emacs "25.0"))
 ;;
 ;; This file is part of GNU Emacs.
@@ -36,6 +36,7 @@
 
 (require 'cl-lib)
 (require 'files)
+(require 'project)
 
 (defconst uniq-file--regexp "^\\(.*\\)<\\([^>]*\\)>?$"
   ;; The trailing '>' is optional so the user can type "<dir" in the
