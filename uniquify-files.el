@@ -6,7 +6,7 @@
 ;; Maintainer: Stephen Leake <stephen_leake@stephe-leake.org>
 ;; Keywords: completion table
 ;;   uniquify
-;; Version: 1.0.1
+;; Version: 1.0.2
 ;; package-requires: ((emacs "25.0"))
 ;;
 ;; This file is part of GNU Emacs.
@@ -306,10 +306,8 @@ done on UNIQIFIED-NAME, PRED is called with ABS-NAME."
 	       uniq-file-all-completions
 	       "display uniquified file names."))
 
-;;; Integration with project.el
+;;; Integration with emacs 27 project.el
 
-(when (fboundp 'project--read-file-cpd-relative)
-  ;; emacs 27
 ;;;###autoload
 (defun uniq-file-read (prompt all-files &optional predicate hist default)
   "For `project-read-file-name-function'."
@@ -321,7 +319,6 @@ done on UNIQIFIED-NAME, PRED is called with ABS-NAME."
 
 ;;;###autoload
 (setq-default project-read-file-name-function #'uniq-file-read)
-)
 
 (provide 'uniquify-files)
 ;;; uniquify-files.el ends here
