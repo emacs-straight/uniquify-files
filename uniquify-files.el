@@ -1,12 +1,12 @@
 ;;; uniquify-files.el --- Completion style for files, minimizing directories  -*- lexical-binding:t -*-
 ;;
-;; Copyright (C) 2019  Free Software Foundation, Inc.
+;; Copyright (C) 2019, 2020  Free Software Foundation, Inc.
 ;;
 ;; Author: Stephen Leake <stephen_leake@stephe-leake.org>
 ;; Maintainer: Stephen Leake <stephen_leake@stephe-leake.org>
 ;; Keywords: completion table
 ;;   uniquify
-;; Version: 1.0.2
+;; Version: 1.0.3
 ;; package-requires: ((emacs "25.0"))
 ;;
 ;; This file is part of GNU Emacs.
@@ -258,7 +258,7 @@ FILES is an alist of (UNIQIFIED-NAME . ABS-NAME).  Completion is
 done on UNIQIFIED-NAME, PRED is called with ABS-NAME."
   (cond
    ((eq action 'alist)
-    (cdr (assoc string files #'string-equal)))
+    (cdr (assoc string files)))
 
    ((eq (car-safe action) 'boundaries)
     ;; We don't use boundaries; return the default definition.
