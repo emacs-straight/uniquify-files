@@ -1,12 +1,12 @@
 ;;; uniquify-files.el --- Completion style for files, minimizing directories  -*- lexical-binding:t -*-
 ;;
-;; Copyright (C) 2019, 2020  Free Software Foundation, Inc.
+;; Copyright (C) 2019, 2020, 2022  Free Software Foundation, Inc.
 ;;
 ;; Author: Stephen Leake <stephen_leake@stephe-leake.org>
 ;; Maintainer: Stephen Leake <stephen_leake@stephe-leake.org>
 ;; Keywords: completion table
 ;;   uniquify
-;; Version: 1.0.3
+;; Version: 1.0.4
 ;; package-requires: ((emacs "25.0"))
 ;;
 ;; This file is part of GNU Emacs.
@@ -33,6 +33,11 @@
 ;; We accomplish this by preprocessing the list of absolute file names
 ;; to be in that style, in an alist with the original absolute file
 ;; names, and do completion on that alist.
+;;
+;; To use it with `project-find-file', customize
+;; `project-read-file-name-function':
+;;
+;; (setq project-read-file-name-function 'uniq-file-read)
 
 (require 'cl-lib)
 (require 'files)
@@ -316,9 +321,6 @@ done on UNIQIFIED-NAME, PRED is called with ABS-NAME."
          (found (project--completing-read-strict
                  prompt table predicate hist default)))
     (cdr (assoc found alist))))
-
-;;;###autoload
-(setq-default project-read-file-name-function #'uniq-file-read)
 
 (provide 'uniquify-files)
 ;;; uniquify-files.el ends here
